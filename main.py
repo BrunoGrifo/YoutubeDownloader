@@ -1,5 +1,7 @@
 import sys
 import os
+import shutil
+import tempfile
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -24,22 +26,20 @@ class App(ctk.CTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
-        self._format = tk.StringVar(value="mp3")
-        self._quality = tk.StringVar(value="720p")
+        self._format = tk.StringVar(value="video")
+        self._quality = tk.StringVar(value="1080p")
         self._is_downloading = False
         self._quality_buttons = []
 
         self._build_ui()
 
     def _build_ui(self):
-        # Title
         ctk.CTkLabel(
             self,
             text="YouTube Video Downloader",
             font=ctk.CTkFont(size=16, weight="bold"),
         ).pack(pady=(18, 0))
 
-        # URL entry
         self.url_entry = ctk.CTkEntry(
             self,
             placeholder_text="Paste YouTube URL here...",
@@ -48,17 +48,8 @@ class App(ctk.CTk):
         )
         self.url_entry.pack(pady=(12, 0), padx=20)
 
-        # Format toggle row
         fmt_frame = ctk.CTkFrame(self, fg_color="transparent")
         fmt_frame.pack(pady=(12, 0))
-
-        self.btn_mp3 = ctk.CTkButton(
-            fmt_frame,
-            text="MP3",
-            width=100,
-            command=lambda: self._set_format("mp3"),
-        )
-        self.btn_mp3.pack(side="left", padx=6)
 
         self.btn_video = ctk.CTkButton(
             fmt_frame,
@@ -68,11 +59,18 @@ class App(ctk.CTk):
         )
         self.btn_video.pack(side="left", padx=6)
 
-        # Quality radio buttons
+        self.btn_mp3 = ctk.CTkButton(
+            fmt_frame,
+            text="MP3",
+            width=100,
+            command=lambda: self._set_format("mp3"),
+        )
+        self.btn_mp3.pack(side="left", padx=6)
+
         qual_frame = ctk.CTkFrame(self, fg_color="transparent")
         qual_frame.pack(pady=(10, 0))
 
-        for q in ("480p", "720p", "1080p"):
+        for q in ("1080p", "720p", "480p"):
             rb = ctk.CTkRadioButton(
                 qual_frame,
                 text=q,
@@ -82,16 +80,13 @@ class App(ctk.CTk):
             rb.pack(side="left", padx=12)
             self._quality_buttons.append(rb)
 
-        # Progress bar
         self.progress_bar = ctk.CTkProgressBar(self, width=420)
         self.progress_bar.set(0)
         self.progress_bar.pack(pady=(18, 0), padx=20)
 
-        # Status label
         self.status_label = ctk.CTkLabel(self, text="", text_color="gray")
         self.status_label.pack(pady=(6, 0))
 
-        # Action buttons
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         btn_frame.pack(pady=(14, 0))
 
@@ -113,7 +108,7 @@ class App(ctk.CTk):
         )
         self.btn_download_as.pack(side="left", padx=8)
 
-        self._set_format("mp3")
+        self._set_format("video")
 
     def _set_format(self, fmt: str):
         self._format.set(fmt)
@@ -134,23 +129,22 @@ class App(ctk.CTk):
         self._start_download(save_dir)
 
     def _on_download_as(self):
-        if self._format.get() == "mp3":
-            filetypes = [("MP3 Audio", "*.mp3")]
-            default_ext = ".mp3"
-        else:
-            filetypes = [("MP4 Video", "*.mp4")]
-            default_ext = ".mp4"
+        default_ext = ".mp3" if self._format.get() == "mp3" else ".mp4"
+        filetypes = (
+            [("MP3 Audio", "*.mp3")]
+            if self._format.get() == "mp3"
+            else [("MP4 Video", "*.mp4")]
+        )
 
-        path = filedialog.asksaveasfilename(
+        target_path = filedialog.asksaveasfilename(
             defaultextension=default_ext,
             filetypes=filetypes,
             initialdir=os.path.expanduser("~"),
         )
-        if path:
-            save_dir = os.path.dirname(path)
-            self._start_download(save_dir, explicit_path=path)
+        if target_path:
+            self._start_download(os.path.dirname(target_path), target_path=target_path)
 
-    def _start_download(self, save_dir: str, explicit_path: str = None):
+    def _start_download(self, save_dir: str, target_path: str = None):
         url = self.url_entry.get().strip()
         if not url:
             messagebox.showwarning("Missing URL", "Please paste a YouTube URL first.")
@@ -163,17 +157,20 @@ class App(ctk.CTk):
         self.progress_bar.set(0)
         self._update_status("Starting download...")
 
-        if explicit_path:
-            base = os.path.splitext(explicit_path)[0]
-            output_template = base + ".%(ext)s"
+        if target_path:
+            # Download to system temp dir first, then move — avoids Windows
+            # Defender locking the file during yt-dlp's internal rename step.
+            temp_dir = tempfile.mkdtemp()
+            output_template = os.path.join(temp_dir, "download.%(ext)s")
         else:
+            temp_dir = None
             output_template = os.path.join(save_dir, "%(title)s.%(ext)s")
 
         opts = self._get_ydl_opts(output_template)
 
         threading.Thread(
             target=self._download_thread,
-            args=(url, opts, save_dir),
+            args=(url, opts, save_dir, target_path, temp_dir),
             daemon=True,
         ).start()
 
@@ -209,17 +206,38 @@ class App(ctk.CTk):
             "noplaylist": True,
             "quiet": True,
             "no_warnings": True,
+            "nopart": True,
         }
         if fmt == "video":
             opts["merge_output_format"] = "mp4"
         return opts
 
-    def _download_thread(self, url: str, opts: dict, save_dir: str):
+    def _download_thread(
+        self,
+        url: str,
+        opts: dict,
+        save_dir: str,
+        target_path: str = None,
+        temp_dir: str = None,
+    ):
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
+
+            if target_path and temp_dir:
+                # Find the finished file (exclude any leftover temp files)
+                files = [
+                    f for f in os.listdir(temp_dir)
+                    if not f.endswith(".temp.mp4") and not f.endswith(".part")
+                ]
+                if files:
+                    shutil.move(os.path.join(temp_dir, files[0]), target_path)
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
             self.after(0, self._on_download_complete, save_dir, None)
         except Exception as e:
+            if temp_dir:
+                shutil.rmtree(temp_dir, ignore_errors=True)
             self.after(0, self._on_download_complete, save_dir, str(e))
 
     def _progress_hook(self, d: dict):

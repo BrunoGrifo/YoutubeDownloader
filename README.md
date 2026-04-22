@@ -16,10 +16,11 @@
 
 ## Features
 
-- Download YouTube videos as **MP4** (480p, 720p, 1080p) or **MP3** (192kbps)
+- Download YouTube videos as **MP4** (1080p, 720p, 480p) or **MP3** (192kbps)
+- **Video + 1080p selected by default**
 - Live progress bar with speed and ETA
 - **Download** → saves directly to `~/Downloads`
-- **Download As...** → choose any path via file dialog
+- **Download As...** → choose filename and save location via file dialog
 - Single portable `.exe` — no Python, no ffmpeg, no dependencies needed on the end user's machine
 
 ---
@@ -124,10 +125,11 @@ graph LR
 The goal was a self-contained Windows app that anyone could run without installing anything. The key challenges were:
 
 1. **UI framework** — chose `customtkinter` for a modern dark-mode look on top of tkinter, which ships with Python and has no extra native dependencies.
-2. **Download engine** — `yt-dlp` handles all YouTube extraction, format selection, and postprocessing. Format strings are constructed at runtime based on the user's quality selection.
+2. **Download engine** — `yt-dlp` handles all YouTube extraction, format selection, and postprocessing. Format strings prefer `mp4+m4a` streams to avoid WebM output, with `merge_output_format=mp4` as a safety net.
 3. **ffmpeg bundling** — yt-dlp needs ffmpeg to merge separate video+audio streams (required for 720p/1080p) and to convert to MP3. `build.bat` downloads a static Windows build at build time and PyInstaller bundles it into the `.exe`. At runtime the app resolves the path via `sys._MEIPASS`.
 4. **Threading** — downloads run in a daemon thread so the UI stays responsive. All widget updates are routed back to the main thread via tkinter's `self.after(0, fn)` queue.
-5. **Packaging** — PyInstaller `--onefile --windowed` produces a single portable `.exe` with the Python runtime, all packages, and ffmpeg embedded. `--collect-all customtkinter` is required to include its theme JSON files, without which the app crashes on launch.
+5. **Windows Defender workaround** — "Download As" downloads to a system temp folder first, lets yt-dlp complete all internal renames there, then moves the finished file to the user's chosen path. This prevents Defender from locking files mid-rename.
+6. **Packaging** — PyInstaller `--onefile --windowed` produces a single portable `.exe` with the Python runtime, all packages, and ffmpeg embedded. `--collect-all customtkinter` is required to include its theme JSON files, without which the app crashes on launch.
 
 ### Stack
 
