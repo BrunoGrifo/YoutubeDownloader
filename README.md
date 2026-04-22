@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Download](https://img.shields.io/badge/⬇%20Download%20YouTubeDownloader.exe-blue?style=for-the-badge&logo=windows&logoColor=white&labelColor=0078D4&color=0078D4)](https://github.com/bgrifo/YoutubeDownloader/releases/latest/download/YouTubeDownloader.exe)
+[![Download](https://img.shields.io/badge/⬇%20Download%20YouTubeDownloader.zip-blue?style=for-the-badge&logo=windows&logoColor=white&labelColor=0078D4&color=0078D4)](https://github.com/BrunoGrifo/YoutubeDownloader/releases/latest/download/YouTubeDownloader.zip)
 
 *Windows 10/11 x64 — no installation required*
 
