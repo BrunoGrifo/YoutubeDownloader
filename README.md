@@ -43,20 +43,20 @@ The script will:
 
 ```mermaid
 graph TD
-    User([User]) -->|pastes URL\nselects format & quality| UI
+    User([User]) -->|"pastes URL, selects format & quality"| UI
 
     subgraph exe["YouTubeDownloader.exe (PyInstaller bundle)"]
-        UI["App UI\n(customtkinter)"]
-        DL["Download Thread\n(daemon)"]
+        UI["App UI (customtkinter)"]
+        DL["Download Thread (daemon)"]
         YTDLP["yt-dlp"]
-        FFMPEG["ffmpeg.exe\n(bundled)"]
+        FFMPEG["ffmpeg.exe (bundled)"]
     end
 
     UI -->|spawns| DL
     DL -->|YoutubeDL.download| YTDLP
-    YTDLP -->|merge video+audio\nor extract MP3| FFMPEG
-    YTDLP -->|progress_hook → after()| UI
-    DL -->|on_complete → after()| UI
+    YTDLP -->|"merge video+audio or extract MP3"| FFMPEG
+    YTDLP -->|"progress_hook via after()"| UI
+    DL -->|"on_complete via after()"| UI
     UI -->|saves file| Disk[(Downloads folder)]
 ```
 
