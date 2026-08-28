@@ -9,12 +9,27 @@ import customtkinter as ctk
 import yt_dlp
 
 
-def get_ffmpeg_path() -> str:
+def _bin_dir() -> str:
     if getattr(sys, "frozen", False):
         base = sys._MEIPASS
     else:
         base = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base, "bin", "ffmpeg.exe")
+    return os.path.join(base, "bin")
+
+
+def get_ffmpeg_path() -> str:
+    return os.path.join(_bin_dir(), "ffmpeg.exe")
+
+
+def get_deno_path() -> str:
+    """Path to the bundled Deno JS runtime.
+
+    YouTube now requires a JavaScript runtime to solve its player challenge;
+    without one yt-dlp only sees a subset of formats and the signed URLs it
+    does get are rejected with HTTP 403. Returns "" if deno isn't bundled.
+    """
+    path = os.path.join(_bin_dir(), "deno.exe")
+    return path if os.path.exists(path) else ""
 
 
 class App(ctk.CTk):
@@ -210,6 +225,10 @@ class App(ctk.CTk):
         }
         if fmt == "video":
             opts["merge_output_format"] = "mp4"
+
+        deno_path = get_deno_path()
+        if deno_path:
+            opts["js_runtimes"] = {"deno": {"path": deno_path}}
         return opts
 
     def _download_thread(

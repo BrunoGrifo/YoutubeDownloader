@@ -34,9 +34,14 @@ build.bat
 ```
 
 The script will:
-1. Install Python dependencies (`customtkinter`, `yt-dlp`, `pyinstaller`)
+1. Install Python dependencies (`customtkinter`, `yt-dlp`, `pyinstaller`) and upgrade `yt-dlp` to the latest release
 2. Download the ffmpeg static binary from GitHub
-3. Bundle everything into `dist\YouTubeDownloader.exe`
+3. Download the Deno JS runtime from GitHub
+4. Bundle everything into `dist\YouTubeDownloader.exe`
+
+> **Keep yt-dlp fresh.** YouTube changes its player regularly and breaks older
+> yt-dlp versions (symptom: `HTTP Error 403: Forbidden`). Rebuild and re-release
+> whenever downloads start failing — `build.bat` always pulls the newest yt-dlp.
 
 ---
 
@@ -53,11 +58,13 @@ graph TD
         DL["Download Thread (daemon)"]
         YTDLP["yt-dlp"]
         FFMPEG["ffmpeg.exe (bundled)"]
+        DENO["deno.exe (bundled)"]
     end
 
     UI -->|spawns| DL
     DL -->|YoutubeDL.download| YTDLP
     YTDLP -->|"merge video+audio or extract MP3"| FFMPEG
+    YTDLP -->|"solve YouTube player JS challenge"| DENO
     YTDLP -->|"progress_hook via after()"| UI
     DL -->|"on_complete via after()"| UI
     UI -->|saves file| Disk[(Downloads folder)]
@@ -109,10 +116,11 @@ graph LR
     root["YoutubeDownloader/"]
     root --> main["main.py\nUI + download logic"]
     root --> req["requirements.txt\nPython dependencies"]
-    root --> bat["build.bat\nffmpeg download + PyInstaller"]
+    root --> bat["build.bat\nffmpeg + deno download + PyInstaller"]
     root --> bin["bin/  ← generated"]
     root --> dist["dist/  ← generated"]
     bin --> ffmpeg["ffmpeg.exe"]
+    bin --> deno["deno.exe"]
     dist --> exe["YouTubeDownloader.exe"]
 ```
 
@@ -127,6 +135,7 @@ The goal was a self-contained Windows app that anyone could run without installi
 1. **UI framework** — chose `customtkinter` for a modern dark-mode look on top of tkinter, which ships with Python and has no extra native dependencies.
 2. **Download engine** — `yt-dlp` handles all YouTube extraction, format selection, and postprocessing. Format strings prefer `mp4+m4a` streams to avoid WebM output, with `merge_output_format=mp4` as a safety net.
 3. **ffmpeg bundling** — yt-dlp needs ffmpeg to merge separate video+audio streams (required for 720p/1080p) and to convert to MP3. `build.bat` downloads a static Windows build at build time and PyInstaller bundles it into the `.exe`. At runtime the app resolves the path via `sys._MEIPASS`.
+4. **Deno bundling** — since mid-2026 YouTube requires solving a JavaScript player challenge; yt-dlp needs a JS runtime for this or downloads fail with `HTTP 403 Forbidden`. `build.bat` downloads `deno.exe` and the app passes it to yt-dlp via `js_runtimes={"deno": {"path": ...}}`.
 4. **Threading** — downloads run in a daemon thread so the UI stays responsive. All widget updates are routed back to the main thread via tkinter's `self.after(0, fn)` queue.
 5. **Windows Defender workaround** — "Download As" downloads to a system temp folder first, lets yt-dlp complete all internal renames there, then moves the finished file to the user's chosen path. This prevents Defender from locking files mid-rename.
 6. **Packaging** — PyInstaller `--onefile --windowed` produces a single portable `.exe` with the Python runtime, all packages, and ffmpeg embedded. `--collect-all customtkinter` is required to include its theme JSON files, without which the app crashes on launch.
